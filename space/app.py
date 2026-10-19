@@ -20,7 +20,8 @@ MODEL_ID = "unsloth/gemma-3-4b-it"
 # Chosen by the RAG ablation (results/rag_ablation.csv): 3 articles, Amharic text only, lenient
 # prompt. It answers half the questions and is right 68% of the time when it does; variants that
 # answer more often are wrong in over 40% of all cases.
-K = 3
+K = 3           # articles the model reads
+SHOW = 5        # articles shown to the user (a relevant article ranked 4th-5th is still visible)
 LENIENT = True
 INCLUDE_ENGLISH = False
 
@@ -39,20 +40,20 @@ def encode(texts):
 
 RETRIEVER = HybridRetriever(CORPUS, encode=encode)
 
-# --- generation (GPU, loaded lazily on first use) ---
-_model = _processor = None
+# --- generation ---
+# Loaded at startup (download + weights to GPU) so the 60-second ZeroGPU window is only used for
+# generating, never for downloading the 8.6 GB model.
+import torch  # noqa: E402
+from transformers import AutoProcessor, Gemma3ForConditionalGeneration  # noqa: E402
+
+_processor = AutoProcessor.from_pretrained(MODEL_ID)
+_model = Gemma3ForConditionalGeneration.from_pretrained(MODEL_ID, torch_dtype=torch.bfloat16).eval()
+if torch.cuda.is_available() or "spaces" in globals():
+    _model.to("cuda")
 
 
 @gpu
 def generate(messages, max_new_tokens=250):
-    global _model, _processor
-    import torch
-    from transformers import AutoProcessor, Gemma3ForConditionalGeneration
-
-    if _model is None:
-        _processor = AutoProcessor.from_pretrained(MODEL_ID)
-        _model = Gemma3ForConditionalGeneration.from_pretrained(
-            MODEL_ID, torch_dtype=torch.bfloat16, device_map="cuda").eval()
     msgs = [{"role": m["role"], "content": [{"type": "text", "text": m["content"]}]} for m in messages]
     inputs = _processor.apply_chat_template(msgs, add_generation_prompt=True, tokenize=True,
                                             return_dict=True, return_tensors="pt").to(_model.device)
@@ -61,8 +62,8 @@ def generate(messages, max_new_tokens=250):
     return _processor.decode(out[0][inputs["input_ids"].shape[-1]:], skip_special_tokens=True).strip()
 
 
-def article_card(a, cited):
-    mark = "✅ " if a["article"] in cited else ""
+def article_card(a, cited, read=True):
+    mark = "✅ " if a["article"] in cited else ("" if read else "➕ ")
     flag = "" if a["alignment"] == "1:1" else "  _(OCR alignment uncertain)_"
     return (f"#### {mark}Article {a['article']}: {a['title_am']} / {a['title_en']}{flag}\n\n"
             f"{a['text_am']}\n\n<details><summary>English</summary>\n\n{a['text_en']}\n\n</details>")
@@ -72,7 +73,8 @@ def answer(question):
     question = (question or "").strip()
     if len(question) < 3:
         return "እባክዎ ጥያቄ ያስገቡ። (Please enter a question.)", ""
-    articles = RETRIEVER.search(question, k=K)
+    shown = RETRIEVER.search(question, k=SHOW)
+    articles = shown[:K]
     try:
         text = generate(build_messages(question, articles, include_english=INCLUDE_ENGLISH, lenient=LENIENT))
     except Exception as e:  # e.g. ZeroGPU quota exhausted: still show the relevant articles
@@ -81,7 +83,7 @@ def answer(question):
     cited = [n for n in cited_articles(text) if n in valid]
     if is_refusal(text):
         text += "\n\n_The model did not find the answer in the retrieved articles; check the articles below._"
-    sources = "\n\n---\n\n".join(article_card(a, cited) for a in articles)
+    sources = "\n\n---\n\n".join(article_card(a, cited, read=i < K) for i, a in enumerate(shown))
     return text, sources
 
 
@@ -103,7 +105,7 @@ with gr.Blocks(title="Amharic Legal QA", theme=gr.themes.Soft()) as demo:
     q = gr.Textbox(label="ጥያቄ (Question)", placeholder="ለምሳሌ፦ በጋብቻ ላይ ጋብቻ መፈጸም ይቻላል?", lines=2)
     btn = gr.Button("ጠይቅ (Ask)", variant="primary")
     out = gr.Markdown(label="መልስ (Answer)")
-    with gr.Accordion("Articles used (Amharic + English)", open=True):
+    with gr.Accordion("Relevant articles (✅ cited in the answer · ➕ also relevant, not read by the model)", open=True):
         src = gr.Markdown()
     gr.Examples(EXAMPLES, inputs=q)
     btn.click(answer, q, [out, src])
