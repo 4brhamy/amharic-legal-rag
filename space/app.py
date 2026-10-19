@@ -15,6 +15,13 @@ except ImportError:  # running locally
     def gpu(fn):
         return fn
 
+
+
+@gpu
+def _zerogpu_placeholder():
+    """ZeroGPU hardware refuses to start unless at least one @spaces.GPU function exists."""
+
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 MODEL_ID = "unsloth/gemma-3-4b-it"
 # Chosen by the RAG ablation (results/rag_ablation.csv): 3 articles, Amharic text only, lenient
