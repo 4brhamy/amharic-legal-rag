@@ -48,7 +48,10 @@ from transformers import AutoProcessor, Gemma3ForConditionalGeneration  # noqa: 
 
 _processor = AutoProcessor.from_pretrained(MODEL_ID)
 _model = Gemma3ForConditionalGeneration.from_pretrained(MODEL_ID, torch_dtype=torch.bfloat16).eval()
-if torch.cuda.is_available() or "spaces" in globals():
+# ZeroGPU's documented pattern: move to "cuda" at startup without querying the GPU. Calling
+# torch.cuda.is_available() here initialises CUDA in the main process, which breaks the forked GPU
+# workers with "No CUDA GPUs are available".
+if "spaces" in globals():
     _model.to("cuda")
 
 
