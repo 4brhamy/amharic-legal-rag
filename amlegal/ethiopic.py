@@ -70,6 +70,13 @@ def _build_homophone_table():
         for order in range(7):  # the seven vowel orders share the same offsets
             table[src + order] = chr(dst + order)
     table[0x1227] = chr(0x1237)  # labialised ሧ -> ሷ
+    # The 1st and 4th vowel orders of ሀ and አ are both pronounced "ha"/"a" and are written
+    # interchangeably (ሀገር/ሃገር, አመት/ዓመት), so fold the 4th order into the 1st.
+    for fourth, first in ((0x1203, 0x1200), (0x12A3, 0x12A0)):
+        table[fourth] = chr(first)
+    for src in (0x1213, 0x1283):  # ሓ ኃ (4th order of ሐ, ኀ) -> ሀ
+        table[src] = chr(0x1200)
+    table[0x12D3] = chr(0x12A0)  # ዓ -> አ
     return table
 
 
@@ -83,6 +90,13 @@ def normalize(text: str) -> str:
     text = text.translate(_HOMOPHONES)
     text = re.sub("[፡-፨]", " ", text)  # ፡ ። ፣ ፤ ፥ ፦ ፧ ፨
     return re.sub(r"\s+", " ", text).strip()
+
+
+# Very common function words that carry no legal meaning ("is", "and", "or", "what", "how", ...).
+STOPWORDS = {
+    "ነው", "ናቸው", "ነበር", "እና", "ወይም", "ግን", "ላይ", "ውስጥ", "ጋር", "ስለ", "ምን", "ማን", "ስንት", "እንዴት",
+    "የት", "መቼ", "ለምን", "ይህ", "ያ", "እነዚህ", "ይችላል", "አለበት", "ነገር", "ሁሉ", "እንደ", "ከ", "በ", "ለ", "የ",
+}
 
 
 def tokenize(text: str) -> list[str]:
