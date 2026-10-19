@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check amlegal tests scripts
+      - run: pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t amharic-legal-rag .
+      - name: Smoke test the container
+        run: |
+          docker run -d -p 8000:8000 --name api amharic-legal-rag
+          for i in $(seq 1 30); do curl -sf localhost:8000/health && break; sleep 1; done
+          curl -sf -X POST localhost:8000/search -H 'Content-Type: application/json' \
+            -d '{"question": "በጋብቻ ላይ ጋብቻ መፈጸም ይቻላል?", "k": 3}' | python -c "import json,sys; a=json.load(sys.stdin)['articles']; assert len(a)==3; print([x['article'] for x in a])"

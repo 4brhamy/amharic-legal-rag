@@ -1,0 +1,8 @@
+# Core library + API (BM25 retrieval only)
+numpy>=1.26
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2
+# Optional, for dense retrieval and answer generation:
+#   sentence-transformers>=3   (AMLEGAL_EMBEDDINGS=1)
+#   transformers>=4.50 torch accelerate   (AMLEGAL_LLM=unsloth/gemma-3-4b-it)
