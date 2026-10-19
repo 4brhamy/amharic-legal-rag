@@ -70,3 +70,34 @@ def mrr(ranked: list[list[int]], gold: list[set[int]]) -> float:
                 total += 1 / (i + 1)
                 break
     return total / max(1, len(gold))
+
+
+class HybridRetriever:
+    """The best method from the retrieval evaluation: rank fusion of BM25 (words and character
+    3-grams) and dense BGE-M3 embeddings over both the Amharic and the English text.
+
+    `encode` is any function mapping a list of strings to L2-normalised vectors (numpy array). It is
+    passed in so this module has no heavy dependency; with encode=None only BM25 is used.
+    """
+
+    def __init__(self, corpus: list[dict], encode=None, depth: int = 20):
+        import numpy as np
+
+        self.np = np
+        self.corpus = corpus
+        self.depth = depth
+        am = [f"{r['title_am']}\n{r['text_am']}" for r in corpus]
+        self.bm_word = BM25(am)
+        self.bm_char = BM25(am, char_ngrams=3)
+        self.encode = encode
+        if encode is not None:
+            self.E_am = encode(am)
+            self.E_en = encode([f"{r['title_en']}\n{r['text_en']}" for r in corpus])
+
+    def search(self, question: str, k: int = 5) -> list[dict]:
+        rankings = [self.bm_word.search(question, self.depth), self.bm_char.search(question, self.depth)]
+        if self.encode is not None:
+            q = self.encode([question])[0]
+            for E in (self.E_am, self.E_en):
+                rankings.append([int(i) for i in self.np.argsort(-(E @ q))[: self.depth]])
+        return [self.corpus[i] for i in reciprocal_rank_fusion(rankings, top=k)]

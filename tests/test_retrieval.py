@@ -33,3 +33,26 @@ def test_rrf_and_metrics():
     assert recall_at_k(ranked, gold, 1) == 0
     assert recall_at_k(ranked, gold, 2) == 0.5
     assert mrr(ranked, gold) == 0.25
+
+
+def test_hybrid_retriever_bm25_only():
+    from amlegal.retrieval import HybridRetriever
+    corpus = [{"article": i + 1, "title_am": "", "text_am": d, "title_en": "", "text_en": ""}
+              for i, d in enumerate(DOCS)]
+    r = HybridRetriever(corpus)
+    assert r.search("ፍቺ እንዴት ይፈጸማል?", k=1)[0]["article"] == 2
+
+
+def test_hybrid_retriever_with_encoder():
+    import numpy as np
+    from amlegal.retrieval import HybridRetriever
+    corpus = [{"article": i + 1, "title_am": "", "text_am": d, "title_en": "", "text_en": ""}
+              for i, d in enumerate(DOCS)]
+
+    def encode(texts):  # toy encoder: one-hot on which keyword appears
+        keys = ["ጋብቻ", "ፍቺ", "ቀለብ"]
+        v = np.array([[1.0 if k in t else 0.0 for k in keys] for t in texts]) + 1e-6
+        return v / np.linalg.norm(v, axis=1, keepdims=True)
+
+    r = HybridRetriever(corpus, encode=encode)
+    assert r.search("ቀለብ", k=1)[0]["article"] == 3
