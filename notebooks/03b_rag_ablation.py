@@ -15,6 +15,9 @@ importlib.reload(G)
 chrf = CHRF()
 import os
 ROUND = os.environ.get("ABLATION_ROUND", "1")
+if "abl" in globals() and "abl_round1" not in globals():
+    # round 1 already ran in this session: keep its results and run round 2
+    abl_round1, ROUND = abl, "2"  # noqa: F821
 if ROUND == "1":
     VARIANTS = {
         "k3_en_strict": dict(k=3, include_english=True, lenient=False),
