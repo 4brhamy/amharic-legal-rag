@@ -15,6 +15,19 @@ SYSTEM = (
 
 NOT_FOUND = "በተሰጡት አንቀጾች ውስጥ መልስ አላገኘሁም"
 
+# Lenient variant: the strict prompt made a 4B model refuse 64% of RAG questions even when the right
+# article was in its context. This version tells it to use the most relevant article and to refuse
+# only when none of the articles is about the question.
+SYSTEM_LENIENT = (
+    "አንተ የኢትዮጵያን የተሻሻለውን የቤተሰብ ሕግ (አዋጅ ቁጥር 213/1992) የምታብራራ ረዳት ነህ። "
+    "ከታች ከተሰጡት አንቀጾች ውስጥ ከጥያቄው ጋር በጣም የሚገናኘውን አንቀጽ ምረጥና በእሱ ላይ ተመሥርተህ "
+    "በአማርኛ በአጭሩ መልስ፤ የተጠቀምክበትን አንቀጽ በ [አንቀጽ ቁጥር] መልክ ጥቀስ። "
+    "አንዳቸውም አንቀጾች ስለ ጥያቄው ጉዳይ የማይናገሩ ከሆነ ብቻ “በተሰጡት አንቀጾች ውስጥ መልስ አላገኘሁም” በል።"
+)
+# English gloss: ...From the articles below, pick the one most related to the question and answer
+# from it, briefly, in Amharic, citing it as [Article N]. Only if none of the articles is about the
+# question, say "I did not find the answer in the given articles".
+
 
 def format_context(articles: list[dict], include_english: bool = True, max_chars: int = 1500) -> str:
     """Render retrieved articles for the prompt. English text is added because the Amharic comes
@@ -28,10 +41,12 @@ def format_context(articles: list[dict], include_english: bool = True, max_chars
     return "\n\n".join(parts)
 
 
-def build_messages(question: str, articles: list[dict], include_english: bool = True) -> list[dict]:
-    context = format_context(articles, include_english)
-    user = f"አንቀጾች፦\n\n{context}\n\nጥያቄ፦ {question}\n\nመልስ፦"
-    return [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}]
+def build_messages(question: str, articles: list[dict], include_english: bool = True,
+                   lenient: bool = False, max_chars: int = 1500) -> list[dict]:
+    context = format_context(articles, include_english, max_chars)
+    user = f"ጥያቄ፦ {question}\n\nአንቀጾች፦\n\n{context}\n\nጥያቄ፦ {question}\n\nመልስ፦"
+    return [{"role": "system", "content": SYSTEM_LENIENT if lenient else SYSTEM},
+            {"role": "user", "content": user}]
 
 
 CITATION = re.compile(r"(?:\[|\()\s*(?:አንቀጽ|አንቀፅ|Article|Art\.?)\s*(\d{1,3})")
