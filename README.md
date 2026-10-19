@@ -12,7 +12,10 @@ little clean digital text, models make basic factual and language mistakes, and 
 only as scanned print. This project builds the full pipeline, from a scanned PDF to an evaluated,
 deployed question-answering system, and measures every step.
 
-<!-- DEMO_LINK -->
+**Live demo (search):** [huggingface.co/spaces/4brham/amharic-legal-qa](https://huggingface.co/spaces/4brham/amharic-legal-qa).
+Type an Amharic question and get the articles of the law that answer it, in Amharic and English. The
+answer-generation step was evaluated on a Colab GPU (below); the free Hugging Face Space gets no GPU, so
+the public demo runs retrieval only (`AMLEGAL_GENERATE=1` enables answers on GPU hardware).
 
 ## Results at a glance
 
@@ -124,7 +127,7 @@ notebooks/          Colab notebooks: 01 build corpus (OCR), 02 retrieval eval, 0
 scripts/            build_corpus.py, build_space.sh
 data/               family_code.jsonl (323 bilingual articles), test_labels.json, raw OCR output
 results/            evaluation outputs
-space/              Hugging Face demo (Gradio)
+space/              Hugging Face demo (Gradio): hybrid search; answers with AMLEGAL_GENERATE=1 on a GPU
 tests/              41 unit and API tests
 ```
 

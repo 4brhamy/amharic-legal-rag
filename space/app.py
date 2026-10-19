@@ -5,7 +5,7 @@ import os
 import gradio as gr
 import numpy as np
 
-from amlegal.generate import NOT_FOUND, build_messages, cited_articles, is_refusal
+from amlegal.generate import build_messages, cited_articles, is_refusal
 from amlegal.retrieval import HybridRetriever
 
 try:
@@ -29,7 +29,7 @@ with open(os.path.join(HERE, "data", "family_code.jsonl"), encoding="utf-8") as 
     CORPUS = [json.loads(line) for line in f]
 
 # --- retrieval (CPU) ---
-from sentence_transformers import SentenceTransformer  # noqa: E402
+from sentence_transformers import SentenceTransformer
 
 _embedder = SentenceTransformer("BAAI/bge-m3", device="cpu")
 
@@ -40,29 +40,28 @@ def encode(texts):
 
 RETRIEVER = HybridRetriever(CORPUS, encode=encode)
 
-# --- generation ---
-# Loaded at startup (download + weights to GPU) so the 60-second ZeroGPU window is only used for
-# generating, never for downloading the 8.6 GB model.
-import torch  # noqa: E402
-from transformers import AutoProcessor, Gemma3ForConditionalGeneration  # noqa: E402
+# --- generation (optional) ---
+# Answer generation needs a GPU. Hugging Face did not allocate ZeroGPU to this free-tier Space
+# ("No CUDA GPUs are available" in the GPU worker), so the public demo runs retrieval only.
+# Set AMLEGAL_GENERATE=1 on GPU hardware to enable Gemma 3 4B answers.
+GENERATE = os.environ.get("AMLEGAL_GENERATE") == "1"
+if GENERATE:
+    import torch
+    from transformers import AutoProcessor, Gemma3ForConditionalGeneration
 
-_processor = AutoProcessor.from_pretrained(MODEL_ID)
-_model = Gemma3ForConditionalGeneration.from_pretrained(MODEL_ID, torch_dtype=torch.bfloat16).eval()
-# ZeroGPU's documented pattern: move to "cuda" at startup without querying the GPU. Calling
-# torch.cuda.is_available() here initialises CUDA in the main process, which breaks the forked GPU
-# workers with "No CUDA GPUs are available".
-if "spaces" in globals():
+    _processor = AutoProcessor.from_pretrained(MODEL_ID)
+    _model = Gemma3ForConditionalGeneration.from_pretrained(MODEL_ID, torch_dtype=torch.bfloat16).eval()
+    # ZeroGPU's pattern: move to "cuda" at startup without querying the GPU first.
     _model.to("cuda")
 
-
-@gpu
-def generate(messages, max_new_tokens=250):
-    msgs = [{"role": m["role"], "content": [{"type": "text", "text": m["content"]}]} for m in messages]
-    inputs = _processor.apply_chat_template(msgs, add_generation_prompt=True, tokenize=True,
-                                            return_dict=True, return_tensors="pt").to(_model.device)
-    with torch.inference_mode():
-        out = _model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
-    return _processor.decode(out[0][inputs["input_ids"].shape[-1]:], skip_special_tokens=True).strip()
+    @gpu
+    def generate(messages, max_new_tokens=250):
+        msgs = [{"role": m["role"], "content": [{"type": "text", "text": m["content"]}]} for m in messages]
+        inputs = _processor.apply_chat_template(msgs, add_generation_prompt=True, tokenize=True,
+                                                return_dict=True, return_tensors="pt").to(_model.device)
+        with torch.inference_mode():
+            out = _model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
+        return _processor.decode(out[0][inputs["input_ids"].shape[-1]:], skip_special_tokens=True).strip()
 
 
 def article_card(a, cited, read=True):
@@ -78,9 +77,18 @@ def answer(question):
         return "እባክዎ ጥያቄ ያስገቡ። (Please enter a question.)", ""
     shown = RETRIEVER.search(question, k=SHOW)
     articles = shown[:K]
+    if not GENERATE:
+        top = shown[0]
+        text = (f"**በጣም የሚገናኘው አንቀጽ፦ አንቀጽ {top['article']} — {top['title_am']}** "
+                f"(most relevant: Article {top['article']}, {top['title_en']})\n\n"
+                "_This public demo shows search only: it finds the articles of the law that answer your "
+                "question. Generated answers (Gemma 3 4B) need a GPU; their evaluation is in the "
+                "[repository](https://github.com/4brhamy/amharic-legal-rag#3-answer-generation)._")
+        sources = "\n\n---\n\n".join(article_card(a, [], read=True) for a in shown)
+        return text, sources
     try:
         text = generate(build_messages(question, articles, include_english=INCLUDE_ENGLISH, lenient=LENIENT))
-    except Exception as e:  # e.g. ZeroGPU quota exhausted: still show the relevant articles
+    except Exception as e:  # noqa: BLE001  any model failure: still show the relevant articles
         text = f"_(The answer model is unavailable right now: {type(e).__name__}. The most relevant articles are below.)_"
     valid = {a["article"] for a in articles}
     cited = [n for n in cited_articles(text) if n in valid]
@@ -101,21 +109,21 @@ EXAMPLES = [
 with gr.Blocks(title="Amharic Legal QA", theme=gr.themes.Soft()) as demo:
     gr.Markdown(
         "# ⚖️ የቤተሰብ ሕግ ጠያቂ · Amharic Legal QA\n"
-        "Ask about Ethiopia's **Revised Family Code** (Proclamation 213/2000) in Amharic. Answers are "
-        "generated only from the retrieved articles and cite them.\n\n"
+        "Ask about Ethiopia's **Revised Family Code** (Proclamation 213/2000) in Amharic and get the "
+        "articles of the law that answer it, in Amharic and English.\n\n"
         "_General legal information, not legal advice. The Amharic text comes from OCR and may contain "
         "errors; the official Negarit Gazeta text prevails._")
     q = gr.Textbox(label="ጥያቄ (Question)", placeholder="ለምሳሌ፦ በጋብቻ ላይ ጋብቻ መፈጸም ይቻላል?", lines=2)
     btn = gr.Button("ጠይቅ (Ask)", variant="primary")
     out = gr.Markdown(label="መልስ (Answer)")
-    with gr.Accordion("Relevant articles (✅ cited in the answer · ➕ also relevant, not read by the model)", open=True):
+    with gr.Accordion("Relevant articles", open=True):
         src = gr.Markdown()
     gr.Examples(EXAMPLES, inputs=q)
     btn.click(answer, q, [out, src])
     q.submit(answer, q, [out, src])
-    gr.Markdown(f"Model: Gemma 3 4B · Retrieval: BM25 + BGE-M3 hybrid · "
-                f"[Code and evaluation](https://github.com/4brhamy/amharic-legal-rag) · "
-                f"If no article answers the question the model says: “{NOT_FOUND}”.")
+    gr.Markdown("Retrieval: BM25 (words + character 3-grams) + BGE-M3 embeddings over Amharic and English, "
+                "fused with reciprocal rank fusion. On 50 hand-labelled questions the right article is in the "
+                "top 5 for 78% of them. · [Code and evaluation](https://github.com/4brhamy/amharic-legal-rag)")
 
 if __name__ == "__main__":
     demo.launch()

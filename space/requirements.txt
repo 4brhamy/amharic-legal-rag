@@ -1,5 +1,5 @@
 numpy
 sentence-transformers>=3
-transformers>=4.50
-accelerate
+# transformers>=4.50   (only with AMLEGAL_GENERATE=1)
+# accelerate
 # torch is preinstalled on ZeroGPU hardware; pinning another version breaks GPU allocation
