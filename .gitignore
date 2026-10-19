@@ -6,3 +6,4 @@ __pycache__/
 pages/
 ocr/
 .ipynb_checkpoints/
+results/label_review.json

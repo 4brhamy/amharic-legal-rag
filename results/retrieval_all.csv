@@ -1,0 +1,7 @@
+method,R@1,R@3,R@5,MRR
+BM25 (words),0.44,0.5,0.52,0.486
+BM25 (char 3-grams),0.42,0.62,0.66,0.533
+"Dense, Amharic",0.48,0.62,0.64,0.571
+"Dense, cross-lingual (EN)",0.44,0.54,0.64,0.521
+Hybrid (all),0.56,0.72,0.78,0.65
+Hybrid (dense AM + EN),0.46,0.6,0.78,0.57
