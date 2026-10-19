@@ -8,7 +8,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from amlegal.align import build_records, find_blocks, is_heading  # noqa: E402
+from amlegal.align import build_records, find_blocks, is_heading
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -27,7 +27,8 @@ def best_pages(*passes):
 def main():
     raw = os.path.join(ROOT, "data", "raw")
     pages = best_pages(read_pages(os.path.join(raw, "ocr_psm4")), read_pages(os.path.join(raw, "ocr_psm6")))
-    english = [json.loads(l) for l in open(os.path.join(raw, "family_code.jsonl"), encoding="utf-8")]
+    with open(os.path.join(raw, "family_code.jsonl"), encoding="utf-8") as f:
+        english = [json.loads(line) for line in f]
     records = build_records(find_blocks(pages), english)
     # Mark articles next to an imperfect alignment: these are the ones most likely to be shifted.
     flagged = {r["article"] for r in records if r["alignment"] != "1:1"}

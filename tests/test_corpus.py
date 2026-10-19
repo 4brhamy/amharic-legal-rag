@@ -3,12 +3,12 @@ from amlegal.corpus import clean_page, split_articles, split_english
 AM_PAGES = [
     # page 1: table of contents (no article headings) and running header
     "ማውጫ\nክፍል ፩ ጠቅላላ ... ፩",
-    "BACK\n፭ የተሻሻለው የቤተሰብ ሕግ ፭\n"
-    "አንቀጽ ፩ የጋብቻ ዓይነቶች\nጋብቻ በክብር መዝገብ ሹም ፊት ሊፈጸም ይችላል።\n"
-    "አንቀጽ ፪ ጋብቻ በክብር መዝገብ ሹም ፊት\nበዚህ ሕግ አንቀጽ ፩ መሠረት ...\n",
-    "አንቀጽ ፫ በሃይማኖት ሥርዓት የሚፈጸም ጋብቻ\nጽሑፍ\n"
-    "አንቀጽ ፹ ልማዳዊ ጋብቻ\nOCR misread ፬ as ፹ (80)\n"
-    "አንቀጽ ፯ ዕድሜ\nmissing headings 5 and 6\n",
+    ("BACK\n፭ የተሻሻለው የቤተሰብ ሕግ ፭\n"
+     "አንቀጽ ፩ የጋብቻ ዓይነቶች\nጋብቻ በክብር መዝገብ ሹም ፊት ሊፈጸም ይችላል።\n"
+     "አንቀጽ ፪ ጋብቻ በክብር መዝገብ ሹም ፊት\nበዚህ ሕግ አንቀጽ ፩ መሠረት ...\n"),
+    ("አንቀጽ ፫ በሃይማኖት ሥርዓት የሚፈጸም ጋብቻ\nጽሑፍ\n"
+     "አንቀጽ ፹ ልማዳዊ ጋብቻ\nOCR misread ፬ as ፹ (80)\n"
+     "አንቀጽ ፯ ዕድሜ\nmissing headings 5 and 6\n"),
 ]
 
 

@@ -1,9 +1,9 @@
 import pytest
 
 fastapi = pytest.importorskip("fastapi")
-from fastapi.testclient import TestClient  # noqa: E402
+from fastapi.testclient import TestClient
 
-from amlegal import api  # noqa: E402
+from amlegal import api
 
 client = TestClient(api.app)
 

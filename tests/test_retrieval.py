@@ -45,6 +45,7 @@ def test_hybrid_retriever_bm25_only():
 
 def test_hybrid_retriever_with_encoder():
     import numpy as np
+
     from amlegal.retrieval import HybridRetriever
     corpus = [{"article": i + 1, "title_am": "", "text_am": d, "title_en": "", "text_en": ""}
               for i, d in enumerate(DOCS)]

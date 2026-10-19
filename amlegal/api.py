@@ -55,12 +55,13 @@ class AskResponse(SearchResponse):
 @lru_cache
 def get_retriever() -> HybridRetriever:
     path = os.environ.get("AMLEGAL_CORPUS", os.path.join(ROOT, "data", "family_code.jsonl"))
-    corpus = [json.loads(line) for line in open(path, encoding="utf-8")]
+    with open(path, encoding="utf-8") as f:
+        corpus = [json.loads(line) for line in f]
     encode = None
     if os.environ.get("AMLEGAL_EMBEDDINGS") == "1":
         from sentence_transformers import SentenceTransformer
         model = SentenceTransformer("BAAI/bge-m3")
-        encode = lambda texts: model.encode(texts, normalize_embeddings=True, batch_size=16)  # noqa: E731
+        encode = lambda texts: model.encode(texts, normalize_embeddings=True, batch_size=16)
     return HybridRetriever(corpus, encode=encode)
 
 

@@ -76,9 +76,8 @@ def split_articles(pages: list[str], heading=AM_HEADING, max_jump: int = 3) -> l
                 prev = articles[-1].number if articles else 0
                 if parsed == 1 and articles and _looks_like_toc(articles):
                     articles, prev = [], 0
-                if not articles and parsed != 1:
-                    if current is None:
-                        continue  # still before the start of the law
+                if not articles and parsed != 1 and current is None:
+                    continue  # still before the start of the law
                 if parsed is not None and prev < parsed <= prev + max_jump:
                     number, checked = parsed, True
                 elif parsed is not None and parsed <= prev:
@@ -100,8 +99,7 @@ def split_english(text: str) -> list[Article]:
 
 def save_jsonl(articles, path):
     with open(path, "w", encoding="utf-8") as f:
-        for a in articles:
-            f.write(json.dumps(asdict(a) if isinstance(a, Article) else a, ensure_ascii=False) + "\n")
+        f.writelines(json.dumps(asdict(a) if isinstance(a, Article) else a, ensure_ascii=False) + "\n" for a in articles)
 
 
 def load_jsonl(path):
