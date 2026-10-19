@@ -12,9 +12,10 @@
 # as `family_code_am.pdf` in the Colab file panel, or run the cell below and pick the file.
 
 # %%
-!apt-get -qq install -y tesseract-ocr poppler-utils > /dev/null
-!wget -q -O /usr/share/tesseract-ocr/4.00/tessdata/amh.traineddata https://github.com/tesseract-ocr/tessdata_best/raw/main/amh.traineddata 2>/dev/null || wget -q -O /usr/share/tesseract-ocr/5/tessdata/amh.traineddata https://github.com/tesseract-ocr/tessdata_best/raw/main/amh.traineddata
-!tesseract --version | head -1 && tesseract --list-langs | grep amh
+!apt-get -qq update > /dev/null && apt-get -qq install -y tesseract-ocr poppler-utils > /dev/null
+# Most accurate Amharic model, kept in a local folder and passed with --tessdata-dir
+!mkdir -p tessdata && wget -q -O tessdata/amh.traineddata https://github.com/tesseract-ocr/tessdata_best/raw/main/amh.traineddata
+!tesseract --version | head -1 && tesseract --tessdata-dir tessdata --list-langs | grep amh && pdftoppm -v 2>&1 | head -1
 !rm -rf amharic-legal-rag && git clone -q https://github.com/4brhamy/amharic-legal-rag.git
 import sys
 sys.path.insert(0, "amharic-legal-rag")
@@ -43,7 +44,7 @@ os.makedirs("ocr", exist_ok=True)
 
 def ocr(png):
     out = os.path.join("ocr", os.path.basename(png)[:-4])
-    subprocess.run(["tesseract", png, out, "-l", "amh", "--psm", "4"], check=True,
+    subprocess.run(["tesseract", png, out, "--tessdata-dir", "tessdata", "-l", "amh", "--psm", "4"], check=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return out + ".txt"
 
