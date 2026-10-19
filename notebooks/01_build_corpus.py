@@ -13,6 +13,7 @@
 
 # %%
 !apt-get -qq update > /dev/null && apt-get -qq install -y tesseract-ocr poppler-utils > /dev/null
+!pip -q install opencv-python-headless
 # Most accurate Amharic model, kept in a local folder and passed with --tessdata-dir
 !mkdir -p tessdata && wget -q -O tessdata/amh.traineddata https://github.com/tesseract-ocr/tessdata_best/raw/main/amh.traineddata
 !tesseract --version | head -1 && tesseract --tessdata-dir tessdata --list-langs | grep amh && pdftoppm -v 2>&1 | head -1
@@ -31,27 +32,25 @@ if not os.path.exists("family_code_am.pdf"):
 
 # %% [markdown]
 # ## OCR every Amharic page
-# Pages are rendered at 300 DPI in greyscale. `--psm 4` treats each page as a single column of text of
-# variable size, which matches the layout (headings, numbered sub-articles, indented lines).
+# Pages are rendered at 300 DPI. Two settings matter for this scan (found by testing on problem pages):
+# - **Underline removal.** Headings are underlined, which makes Tesseract misread them.
+# - **`--psm 6`** (one uniform block of text). The default layout analysis drops some underlined
+#   headings entirely, e.g. "Article 112 – Appeal" on page 41.
 
 # %%
-import glob, subprocess
+import glob
 from concurrent.futures import ThreadPoolExecutor
+from amlegal.ocr import ocr_image
 
 os.makedirs("pages", exist_ok=True)
 os.makedirs("ocr", exist_ok=True)
 !pdftoppm -r 300 -gray -png family_code_am.pdf pages/p
 
-def ocr(png):
-    out = os.path.join("ocr", os.path.basename(png)[:-4])
-    subprocess.run(["tesseract", png, out, "--tessdata-dir", "tessdata", "-l", "amh", "--psm", "4"], check=True,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return out + ".txt"
-
 pngs = sorted(glob.glob("pages/*.png"))
 with ThreadPoolExecutor(max_workers=os.cpu_count()) as pool:
-    txts = list(pool.map(ocr, pngs))
-pages_am = [open(t, encoding="utf-8").read() for t in txts]
+    pages_am = list(pool.map(lambda p: ocr_image(p, psm=6, tessdata_dir="tessdata"), pngs))
+for png, text in zip(pngs, pages_am):
+    open(os.path.join("ocr", os.path.basename(png)[:-4] + ".txt"), "w", encoding="utf-8").write(text)
 print(len(pages_am), "pages OCR'd")
 print(pages_am[9][:800])
 
