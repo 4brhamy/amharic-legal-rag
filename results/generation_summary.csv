@@ -1,0 +1,4 @@
+setup,chrF,citation_accuracy,answers_with_citation,refusals
+closed_book,19.318,0.0,0.0,0.0
+rag,14.738,0.08,0.1,0.64
+oracle,36.953,0.78,0.78,0.02

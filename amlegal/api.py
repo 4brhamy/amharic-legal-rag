@@ -29,7 +29,7 @@ app = FastAPI(title="Amharic Legal QA", version="0.1.0",
 
 class Question(BaseModel):
     question: str = Field(..., min_length=3, max_length=500, examples=["የጋብቻ ዕድሜ ስንት ነው?"])
-    k: int = Field(5, ge=1, le=10)
+    k: int = Field(3, ge=1, le=10)
 
 
 class Article(BaseModel):
@@ -116,7 +116,8 @@ def ask(q: Question):
     if generate is None:
         return AskResponse(articles=[_public(a) for a in articles], answer=None, cited_articles=[], refused=False)
     try:
-        answer = generate(build_messages(q.question, articles))
+        # configuration chosen by the RAG ablation: Amharic text only, lenient prompt (k=3 by default)
+        answer = generate(build_messages(q.question, articles, include_english=False, lenient=True))
     except Exception as e:  # model errors should not crash the service
         raise HTTPException(status_code=503, detail=f"generation failed: {type(e).__name__}") from e
     valid = {a["article"] for a in articles}

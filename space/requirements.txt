@@ -1,0 +1,5 @@
+numpy
+sentence-transformers>=3
+transformers>=4.50
+accelerate
+torch
