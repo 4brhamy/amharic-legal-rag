@@ -22,7 +22,7 @@ import sys
 sys.path.insert(0, "amharic-legal-rag")
 
 # %%
-import os
+import json, os
 if not os.path.exists("family_code_am.pdf"):
     from google.colab import files
     up = files.upload()
@@ -31,81 +31,59 @@ if not os.path.exists("family_code_am.pdf"):
 !pdfinfo family_code_am.pdf | grep Pages && pdfinfo family_code_en.pdf | grep Pages
 
 # %% [markdown]
-# ## OCR every Amharic page
-# Pages are rendered at 300 DPI. Two settings matter for this scan (found by testing on problem pages):
+# ## OCR every Amharic page (two passes)
+# Pages are rendered at 300 DPI. What works for this scan was found by testing on problem pages:
 # - **Underline removal.** Headings are underlined, which makes Tesseract misread them.
-# - **`--psm 6`** (one uniform block of text). The default layout analysis drops some underlined
-#   headings entirely, e.g. "Article 112 – Appeal" on page 41.
+# - **Two layout modes.** `--psm 4` and `--psm 6` each drop *different* underlined headings (for
+#   example psm 4 loses "Article 112 – Appeal" on page 41, psm 6 finds it). Both passes are kept and
+#   the build script picks, page by page, the pass that found more headings.
+#
+# Each pass takes roughly 15 minutes on Colab's CPU.
 
 # %%
 import glob
 from concurrent.futures import ThreadPoolExecutor
 from amlegal.ocr import ocr_image
 
-os.makedirs("pages", exist_ok=True)
-os.makedirs("ocr", exist_ok=True)
-!pdftoppm -r 300 -gray -png family_code_am.pdf pages/p
-
+RAW = "amharic-legal-rag/data/raw"
+!pdftoppm -r 300 -gray -png family_code_am.pdf pages/p 2>/dev/null || (mkdir -p pages && pdftoppm -r 300 -gray -png family_code_am.pdf pages/p)
 pngs = sorted(glob.glob("pages/*.png"))
-with ThreadPoolExecutor(max_workers=os.cpu_count()) as pool:
-    pages_am = list(pool.map(lambda p: ocr_image(p, psm=6, tessdata_dir="tessdata"), pngs))
-for png, text in zip(pngs, pages_am):
-    open(os.path.join("ocr", os.path.basename(png)[:-4] + ".txt"), "w", encoding="utf-8").write(text)
-print(len(pages_am), "pages OCR'd")
-print(pages_am[9][:800])
+for psm in (4, 6):
+    out_dir = f"{RAW}/ocr_psm{psm}"
+    os.makedirs(out_dir, exist_ok=True)
+    with ThreadPoolExecutor(max_workers=os.cpu_count()) as pool:
+        texts = list(pool.map(lambda p: ocr_image(p, psm=psm, tessdata_dir="tessdata"), pngs))
+    for png, text in zip(pngs, texts):
+        open(f"{out_dir}/{os.path.basename(png)[:-4]}.txt", "w", encoding="utf-8").write(text)
+    print(f"psm {psm}: {len(texts)} pages")
 
 # %% [markdown]
-# ## Split into articles and check the result
-# The law has 323 articles. OCR occasionally misreads an Ethiopic numeral; the splitter checks every
-# heading against the running sequence and flags any number it had to infer.
+# ## English articles
+# The English text has a clean text layer; it is split on its "Article N." headings (323 articles).
 
 # %%
-from amlegal.corpus import clean_page, split_articles, split_english, save_jsonl
-
-arts_am = split_articles([clean_page(p) for p in pages_am])
-nums = [a.number for a in arts_am]
-missing = [n for n in range(1, 324) if n not in nums]
-unchecked = [a.number for a in arts_am if not a.number_checked]
-print(f"Amharic articles: {len(arts_am)} (last = {nums[-1] if nums else None})")
-print(f"Missing numbers ({len(missing)}): {missing}")
-print(f"Numbers inferred from the sequence ({len(unchecked)}): {unchecked}")
-
+from amlegal.corpus import split_english
 !pdftotext -layout family_code_en.pdf family_code_en.txt
 arts_en = split_english(open("family_code_en.txt", encoding="utf-8").read())
 print(f"English articles: {len(arts_en)}")
+with open(f"{RAW}/family_code.jsonl", "w", encoding="utf-8") as f:
+    for a in arts_en:
+        f.write(json.dumps({"article": a.number, "title_en": a.title, "text_en": a.text}, ensure_ascii=False) + "\n")
 
 # %% [markdown]
-# ## Merge into one bilingual record per article
+# ## Align Amharic to English and build the corpus
+# OCR misreads most Ethiopic article numerals, so numbers are not read from the headings. Instead each
+# Amharic block is aligned to the English articles by length, number of sub-articles and any numeral
+# that did read correctly (`amlegal/align.py`). Every record carries an `alignment` flag:
+# `1:1` is a clean match; `1:2`/`1:3` means OCR missed a heading and neighbouring articles share a block.
 
 # %%
-en = {a.number: a for a in arts_en}
-am = {a.number: a for a in arts_am}
-records = []
-for n in range(1, 324):
-    a, e = am.get(n), en.get(n)
-    records.append({
-        "article": n,
-        "title_am": a.title if a else "",
-        "text_am": a.text if a else "",
-        "title_en": e.title if e else "",
-        "text_en": e.text if e else "",
-        "page_am": a.page if a else None,
-        "number_checked": a.number_checked if a else False,
-    })
-
-os.makedirs("out", exist_ok=True)
-save_jsonl(records, "out/family_code.jsonl")
-both = sum(1 for r in records if r["text_am"] and r["text_en"])
-print(f"{both}/323 articles have both Amharic and English text")
-
-import random
-for r in random.sample(records, 3):
-    print(f"\n--- Article {r['article']} ---\n{r['title_am']}\n{r['text_am'][:300]}\n\n{r['title_en']}\n{r['text_en'][:300]}")
+!cd amharic-legal-rag && python scripts/build_corpus.py
 
 # %% [markdown]
 # ## Save the outputs
-# `out/family_code.jsonl` is the corpus used by the rest of the project. The raw OCR pages are kept
-# too, so the OCR can be inspected or corrected later.
 
 # %%
-!cp -r ocr out/ocr_pages && cd out && zip -qr ../corpus_outputs.zip . && cd .. && ls -la corpus_outputs.zip
+!cd amharic-legal-rag && zip -qr ../corpus_outputs.zip data && cd .. && ls -la corpus_outputs.zip
+from google.colab import files
+files.download("corpus_outputs.zip")
