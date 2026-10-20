@@ -7,7 +7,7 @@
 #
 # **Before running:** add your API key as a Colab secret named `GEMINI_API_KEY` (🔑 icon in the left
 # sidebar, enable notebook access). **Runtime:** a T4 GPU speeds up the embeddings; CPU also works. Requests are paced to stay within the
-# free-tier rate limit, so the run takes about 30 minutes.
+# free-tier rate limit; the run takes about 10 minutes.
 #
 # Note: on the free tier, Google may use prompts to improve its products. The prompts here contain
 # only public law text and the public test questions.
@@ -58,19 +58,32 @@ SETUPS = {
     "rag_k3_am_lenient": lambda q, i: build_messages(q, retrieved[i][:3], include_english=False, lenient=True),
     "oracle": lambda q, i: build_messages(q, [by_article[a] for a in qa.gold[i]]),
 }
-PAUSE = 6.5  # seconds between requests: stays under ~10 requests/minute on the free tier
+from concurrent.futures import ThreadPoolExecutor, as_completed
+WORKERS = 3  # answers take a few seconds each, so 3 in flight stays under the free per-minute limit
+
+
+def answer(name, i):
+    try:
+        ans = generate(SETUPS[name](qa.question[i], i))
+        return ans, generate.last_model
+    except Exception as e:
+        return f"ERROR: {type(e).__name__}: {e}"[:300], None
+
+
 rows, t0 = [], time.time()
-for name, make in SETUPS.items():
-    for i, q in enumerate(qa.question):
-        try:
-            ans = generate(make(q, i))
-        except Exception as e:
-            ans = f"ERROR: {type(e).__name__}: {e}"[:300]
-        rows.append({"i": i, "setup": name, "answer": ans})
-        time.sleep(PAUSE)
-    print(f"{name} done, {time.time() - t0:.0f}s")
+todo = [(name, i) for name in SETUPS for i in range(len(qa))]
+with ThreadPoolExecutor(WORKERS) as pool:
+    futures = {pool.submit(answer, name, i): (name, i) for name, i in todo}
+    for n, fut in enumerate(as_completed(futures), 1):
+        name, i = futures[fut]
+        ans, used = fut.result()
+        rows.append({"i": i, "setup": name, "answer": ans, "model": used})
+        if n % 25 == 0:
+            print(f"{n}/{len(todo)} done, {time.time() - t0:.0f}s")
+order = {name: k for k, name in enumerate(SETUPS)}
+rows.sort(key=lambda r: (order[r["setup"]], r["i"]))
 res = pd.DataFrame(rows)
-print("errors:", res.answer.str.startswith("ERROR").sum())
+print("errors:", res.answer.str.startswith("ERROR").sum(), "| models used:", res.model.value_counts().to_dict())
 
 # %% [markdown]
 # ## Score (same metrics as notebook 3)
@@ -102,7 +115,7 @@ for i in [7, 37, 42]:
 # %%
 os.makedirs("results", exist_ok=True)
 summary.to_csv(f"results/gemini_summary.csv")
-res[["i", "setup", "answer", "cited", "chrF", "citation_correct", "refusal"]].to_json(
+res[["i", "setup", "model", "answer", "cited", "chrF", "citation_correct", "refusal"]].to_json(
     "results/gemini_answers.jsonl", orient="records", lines=True, force_ascii=False)
 with open("results/gemini_model.txt", "w") as f:
     f.write(MODEL + "\n")
