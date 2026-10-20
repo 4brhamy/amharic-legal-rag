@@ -33,7 +33,7 @@ class FakeClient:
     def generate_content(self, model, contents, config):
         self.calls.append((model, contents, config))
         if len(self.calls) <= self.fail_times:
-            raise RuntimeError("503 unavailable")
+            raise RuntimeError("503 UNAVAILABLE")
         return pytypes.SimpleNamespace(text="  አይቻልም [አንቀጽ 11]  ")
 
 
@@ -74,3 +74,38 @@ def test_auto_model_uses_models_list(monkeypatch):
                            pytypes.SimpleNamespace(name="models/gemini-9.9-flash-tts", supported_actions=["generateContent"])]
     gen = gemini_generator(client=client, model="auto")
     assert gen.model == "gemini-9.9-flash"
+
+
+def test_falls_back_to_next_model_when_busy(monkeypatch):
+    from amlegal.llm import gemini_generator
+    monkeypatch.setattr("time.sleep", lambda s: None)
+
+    class Busy(FakeClient):
+        def generate_content(self, model, contents, config):
+            self.calls.append(model)
+            if model == "gemini-9.9-flash":
+                raise RuntimeError("503 UNAVAILABLE. The model is overloaded.")
+            return pytypes.SimpleNamespace(text="መልስ")
+
+    client = Busy()
+    client.list = lambda: [pytypes.SimpleNamespace(name=f"models/{n}", supported_actions=["generateContent"])
+                           for n in ("gemini-9.9-flash", "gemini-9.0-flash")]
+    gen = gemini_generator(client=client, model="auto", retries=2)
+    assert gen([{"role": "user", "content": "Q"}]) == "መልስ"
+    assert client.calls == ["gemini-9.9-flash", "gemini-9.9-flash", "gemini-9.0-flash"]
+    assert gen.last_model == "gemini-9.0-flash"
+
+
+def test_non_transient_errors_are_not_retried(monkeypatch):
+    from amlegal.llm import gemini_generator
+
+    class Bad(FakeClient):
+        def generate_content(self, model, contents, config):
+            self.calls.append(model)
+            raise RuntimeError("400 INVALID_ARGUMENT")
+
+    client = Bad()
+    gen = gemini_generator(client=client, model="m")
+    with pytest.raises(RuntimeError):
+        gen([{"role": "user", "content": "Q"}])
+    assert len(client.calls) == 1

@@ -109,6 +109,9 @@ def answer(question):
         detail = str(e).split("{")[0].strip()[:160]  # e.g. "400 INVALID_ARGUMENT. API key not valid..."
         text = (f"_(The answer model is unavailable right now: {type(e).__name__} {detail}. "
                 "The most relevant articles are below.)_")
+    used = getattr(generate, "last_model", None) if BACKEND else None
+    if used:
+        text += f"\n\n<sub>Answered by {used}</sub>"
     valid = {a["article"] for a in articles}
     cited = [n for n in cited_articles(text) if n in valid]
     if is_refusal(text):
