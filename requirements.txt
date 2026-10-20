@@ -6,3 +6,6 @@ pydantic>=2
 # Optional, for dense retrieval and answer generation:
 #   sentence-transformers>=3   (AMLEGAL_EMBEDDINGS=1)
 #   transformers>=4.50 torch accelerate   (AMLEGAL_LLM=unsloth/gemma-3-4b-it)
+
+# Optional: hosted answers without a GPU (AMLEGAL_LLM=gemini, GEMINI_API_KEY=...)
+# google-genai>=1.0

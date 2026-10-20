@@ -1,5 +1,5 @@
 numpy
 sentence-transformers>=3
-# transformers>=4.50   (only with AMLEGAL_GENERATE=1)
-# accelerate
+google-genai>=1.0
+# transformers>=4.50, accelerate   (only for AMLEGAL_GENERATE=1, local Gemma on GPU)
 # torch is preinstalled on ZeroGPU hardware; pinning another version breaks GPU allocation

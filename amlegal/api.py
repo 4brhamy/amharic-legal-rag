@@ -5,8 +5,9 @@ Run:  uvicorn amlegal.api:app --port 8000
 Configuration (environment variables):
   AMLEGAL_CORPUS     path to the corpus JSONL (default: data/family_code.jsonl)
   AMLEGAL_EMBEDDINGS "1" to add BGE-M3 dense retrieval (needs sentence-transformers; ~2 GB model)
-  AMLEGAL_LLM        Hugging Face model id for answer generation, e.g. "unsloth/gemma-3-4b-it"
-                     (needs transformers + a GPU). Without it, /ask returns the articles only.
+  AMLEGAL_LLM        "gemini" (or a Gemini model id) for hosted answers via GEMINI_API_KEY, no GPU needed;
+                     or a Hugging Face model id such as "unsloth/gemma-3-4b-it" (transformers + a GPU).
+                     Without it, /ask returns the articles only.
 """
 import json
 import os
@@ -71,6 +72,9 @@ def get_generator():
     model_id = os.environ.get("AMLEGAL_LLM")
     if not model_id:
         return None
+    if model_id.startswith("gemini"):  # hosted model, no GPU: AMLEGAL_LLM=gemini or gemini-2.5-flash
+        from .llm import gemini_generator
+        return gemini_generator(model=None if model_id == "gemini" else model_id)
     import torch
     from transformers import AutoProcessor, Gemma3ForConditionalGeneration
 
