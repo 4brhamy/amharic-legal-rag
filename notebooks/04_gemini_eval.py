@@ -6,7 +6,7 @@
 # same setups as notebook 3, so the two models can be compared directly.
 #
 # **Before running:** add your API key as a Colab secret named `GEMINI_API_KEY` (🔑 icon in the left
-# sidebar, enable notebook access). **Runtime:** CPU is fine. Requests are paced to stay within the
+# sidebar, enable notebook access). **Runtime:** a T4 GPU speeds up the embeddings; CPU also works. Requests are paced to stay within the
 # free-tier rate limit, so the run takes about 30 minutes.
 #
 # Note: on the free tier, Google may use prompts to improve its products. The prompts here contain
@@ -36,11 +36,12 @@ gold = json.load(open("amharic-legal-rag/data/test_labels.json"))
 qa["gold"] = [gold[str(i)] for i in range(len(qa))]
 
 # %% [markdown]
-# ## Retrieval (same hybrid retriever as the demo; BGE-M3 on CPU takes a few minutes)
+# ## Retrieval (same hybrid retriever as the demo; BGE-M3 takes ~1 min on a GPU, ~10 on CPU)
 
 # %%
 from sentence_transformers import SentenceTransformer
-embedder = SentenceTransformer("BAAI/bge-m3", device="cpu")
+import torch
+embedder = SentenceTransformer("BAAI/bge-m3", device="cuda" if torch.cuda.is_available() else "cpu")
 retriever = HybridRetriever(corpus, encode=lambda t: embedder.encode(t, normalize_embeddings=True, batch_size=16))
 retrieved = [retriever.search(q, k=5) for q in qa.question]
 print("gold article in top 5:", sum(bool({a["article"] for a in r} & set(g)) for r, g in zip(retrieved, qa.gold)), "/ 50")
