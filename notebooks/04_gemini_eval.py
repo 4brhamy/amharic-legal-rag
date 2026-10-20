@@ -25,8 +25,8 @@ from amlegal.llm import gemini_generator, DEFAULT_GEMINI_MODEL
 
 os.environ["GEMINI_API_KEY"] = userdata.get("GEMINI_API_KEY")
 MODEL = "auto-lite"  # Flash-Lite: its free daily quota fits the 200-call evaluation
-generate = gemini_generator(model=MODEL)
-print(MODEL, "->", generate([{"role": "user", "content": "ሰላም! በአንድ ቃል መልስ፦ የኢትዮጵያ ዋና ከተማ ማን ናት?"}], 20))
+generate = gemini_generator(model=MODEL, fallback=False, retries=6)  # one model for all answers
+print(generate.model, "->", generate([{"role": "user", "content": "ሰላም! በአንድ ቃል መልስ፦ የኢትዮጵያ ዋና ከተማ ማን ናት?"}], 20))
 
 corpus = [json.loads(l) for l in open("amharic-legal-rag/data/family_code.jsonl", encoding="utf-8")]
 by_article = {r["article"]: r for r in corpus}
@@ -80,6 +80,11 @@ with ThreadPoolExecutor(WORKERS) as pool:
         rows.append({"i": i, "setup": name, "answer": ans, "model": used})
         if n % 25 == 0:
             print(f"{n}/{len(todo)} done, {time.time() - t0:.0f}s")
+# Second pass: retry answers that failed on a temporary error (overload, per-minute limit).
+for r in rows:
+    if r["answer"].startswith("ERROR"):
+        time.sleep(5)
+        r["answer"], r["model"] = answer(r["setup"], r["i"])
 order = {name: k for k, name in enumerate(SETUPS)}
 rows.sort(key=lambda r: (order[r["setup"]], r["i"]))
 res = pd.DataFrame(rows)
@@ -118,7 +123,7 @@ summary.to_csv(f"results/gemini_summary.csv")
 res[["i", "setup", "model", "answer", "cited", "chrF", "citation_correct", "refusal"]].to_json(
     "results/gemini_answers.jsonl", orient="records", lines=True, force_ascii=False)
 with open("results/gemini_model.txt", "w") as f:
-    f.write(MODEL + "\n")
+    f.write(generate.model + "\n")
 !zip -qr gemini_results.zip results && ls -la gemini_results.zip
 from google.colab import files
 files.download("gemini_results.zip")

@@ -133,3 +133,35 @@ def test_fallback_model_is_remembered(monkeypatch):
     client.calls.clear()
     gen([{"role": "user", "content": "Q2"}])
     assert client.calls == ["gemini-9.0-flash"]     # goes straight to the model that worked
+
+
+class _Retired(FakeClient):
+    def generate_content(self, model, contents, config):
+        self.calls.append(model)
+        if model == "gemini-9.9-flash-lite":
+            raise RuntimeError("404 NOT_FOUND. This model is no longer available to new users.")
+        return pytypes.SimpleNamespace(text="መልስ")
+
+
+def _lite_client():
+    client = _Retired()
+    client.list = lambda: [pytypes.SimpleNamespace(name=f"models/{n}", supported_actions=["generateContent"])
+                           for n in ("gemini-9.9-flash-lite", "gemini-9.0-flash-lite")]
+    return client
+
+
+def test_retired_model_is_skipped_and_dropped(monkeypatch):
+    from amlegal.llm import gemini_generator
+    client = _lite_client()
+    gen = gemini_generator(client=client, model="auto-lite")
+    assert gen([{"role": "user", "content": "Q"}]) == "መልስ"
+    assert gen.candidates == ["gemini-9.0-flash-lite"]
+
+
+def test_no_fallback_locks_onto_one_working_model(monkeypatch):
+    from amlegal.llm import gemini_generator
+    client = _lite_client()
+    gen = gemini_generator(client=client, model="auto-lite", fallback=False)
+    assert gen.candidates == ["gemini-9.0-flash-lite"]
+    gen([{"role": "user", "content": "Q"}])
+    assert gen.last_model == "gemini-9.0-flash-lite"

@@ -30,16 +30,22 @@ def rank_gemini_models(names: list[str], lite: bool | None = None) -> list[str]:
     return pool
 
 
+def _unavailable(e: Exception) -> bool:
+    return "404" in str(e) or "NOT_FOUND" in str(e) or "no longer available" in str(e)
+
+
 def pick_gemini_model(names: list[str]) -> str:
     """The newest general-purpose Flash model, e.g. [..."gemini-3.0-flash"...] -> "gemini-3.0-flash"."""
     return rank_gemini_models(names)[0]
 
 
-def gemini_generator(api_key: str | None = None, model: str | None = None, client=None, retries: int = 3):
+def gemini_generator(api_key: str | None = None, model: str | None = None, client=None, retries: int = 3,
+                     fallback: bool = True):
     """Answer with a hosted Gemini model (Google AI Studio API). No GPU needed.
 
     `client` can be injected for testing; otherwise a google-genai client is created from
-    `api_key` (default: the GEMINI_API_KEY environment variable).
+    `api_key` (default: the GEMINI_API_KEY environment variable). With fallback=False every answer
+    comes from one model (the first that responds at start-up), which an evaluation needs.
     """
     from google.genai import types
 
@@ -55,6 +61,17 @@ def gemini_generator(api_key: str | None = None, model: str | None = None, clien
         candidates = rank_gemini_models(usable, lite=True if model == "auto-lite" else None)[:4]
     else:
         candidates = [model]
+    if not fallback:  # lock onto the first candidate that actually answers
+        for name in candidates:
+            try:
+                client.models.generate_content(model=name, contents="OK", config=types.GenerateContentConfig(max_output_tokens=5))
+                candidates = [name]
+                break
+            except Exception as e:
+                if not _unavailable(e) and "quota" not in str(e):
+                    raise
+        else:
+            raise RuntimeError(f"none of {candidates} is usable with this API key")
 
     def generate(messages, max_new_tokens: int = 400) -> str:
         system = "\n".join(m["content"] for m in messages if m["role"] == "system")
@@ -78,7 +95,11 @@ def gemini_generator(api_key: str | None = None, model: str | None = None, clien
                     return (response.text or "").strip()
                 except Exception as e:  # busy/rate-limited: back off, then try the next model
                     last_error = e
-                    if "exceeded your current quota" in str(e):
+                    if _unavailable(e):  # listed but retired for this key: never try it again
+                        if name in candidates and len(candidates) > 1:
+                            candidates.remove(name)
+                        break
+                    if "exceeded your current quota" in str(e) and fallback:
                         break  # daily quota for this model is used up: move to the next model now
                     busy = any(code in str(e) for code in ("429", "500", "503", "UNAVAILABLE", "RESOURCE_EXHAUSTED"))
                     if not busy:
