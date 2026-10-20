@@ -63,11 +63,14 @@ def gemini_generator(api_key: str | None = None, model: str | None = None, clien
             max_output_tokens=max(max_new_tokens, 2048),
         )
         last_error = None
-        for name in candidates:
+        for name in list(candidates):
             for attempt in range(retries):
                 try:
                     response = client.models.generate_content(model=name, contents=user, config=config)
                     generate.last_model = name
+                    if candidates[0] != name:  # remember the model that works: try it first next time
+                        candidates.remove(name)
+                        candidates.insert(0, name)
                     return (response.text or "").strip()
                 except Exception as e:  # busy/rate-limited: back off, then try the next model
                     last_error = e

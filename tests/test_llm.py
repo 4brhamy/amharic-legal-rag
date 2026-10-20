@@ -109,3 +109,24 @@ def test_non_transient_errors_are_not_retried(monkeypatch):
     with pytest.raises(RuntimeError):
         gen([{"role": "user", "content": "Q"}])
     assert len(client.calls) == 1
+
+
+def test_fallback_model_is_remembered(monkeypatch):
+    from amlegal.llm import gemini_generator
+    monkeypatch.setattr("time.sleep", lambda s: None)
+
+    class Busy(FakeClient):
+        def generate_content(self, model, contents, config):
+            self.calls.append(model)
+            if model == "gemini-9.9-flash":
+                raise RuntimeError("503 UNAVAILABLE")
+            return pytypes.SimpleNamespace(text="ok")
+
+    client = Busy()
+    client.list = lambda: [pytypes.SimpleNamespace(name=f"models/{n}", supported_actions=["generateContent"])
+                           for n in ("gemini-9.9-flash", "gemini-9.0-flash")]
+    gen = gemini_generator(client=client, model="auto", retries=2)
+    gen([{"role": "user", "content": "Q1"}])
+    client.calls.clear()
+    gen([{"role": "user", "content": "Q2"}])
+    assert client.calls == ["gemini-9.0-flash"]     # goes straight to the model that worked
