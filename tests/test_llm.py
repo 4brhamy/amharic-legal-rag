@@ -165,3 +165,20 @@ def test_no_fallback_locks_onto_one_working_model(monkeypatch):
     assert gen.candidates == ["gemini-9.0-flash-lite"]
     gen([{"role": "user", "content": "Q"}])
     assert gen.last_model == "gemini-9.0-flash-lite"
+
+
+def test_no_fallback_skips_a_busy_model_at_startup(monkeypatch):
+    from amlegal.llm import gemini_generator
+
+    class BusyFirst(FakeClient):
+        def generate_content(self, model, contents, config):
+            self.calls.append(model)
+            if model == "gemini-9.9-flash-lite":
+                raise RuntimeError("429 RESOURCE_EXHAUSTED. You exceeded your current quota.")
+            return pytypes.SimpleNamespace(text="መልስ")
+
+    client = BusyFirst()
+    client.list = lambda: [pytypes.SimpleNamespace(name=f"models/{n}", supported_actions=["generateContent"])
+                           for n in ("gemini-9.9-flash-lite", "gemini-9.0-flash-lite")]
+    gen = gemini_generator(client=client, model="auto-lite", fallback=False)
+    assert gen.candidates == ["gemini-9.0-flash-lite"]

@@ -34,6 +34,11 @@ def _unavailable(e: Exception) -> bool:
     return "404" in str(e) or "NOT_FOUND" in str(e) or "no longer available" in str(e)
 
 
+def _busy(e: Exception) -> bool:
+    """Overloaded, rate-limited or out of quota: worth retrying later or on another model."""
+    return any(code in str(e) for code in ("429", "500", "503", "UNAVAILABLE", "RESOURCE_EXHAUSTED"))
+
+
 def pick_gemini_model(names: list[str]) -> str:
     """The newest general-purpose Flash model, e.g. [..."gemini-3.0-flash"...] -> "gemini-3.0-flash"."""
     return rank_gemini_models(names)[0]
@@ -67,8 +72,8 @@ def gemini_generator(api_key: str | None = None, model: str | None = None, clien
                 client.models.generate_content(model=name, contents="OK", config=types.GenerateContentConfig(max_output_tokens=5))
                 candidates = [name]
                 break
-            except Exception as e:
-                if not _unavailable(e) and "quota" not in str(e):
+            except Exception as e:  # retired, busy or out of quota: try the next candidate
+                if not (_unavailable(e) or _busy(e)):
                     raise
         else:
             raise RuntimeError(f"none of {candidates} is usable with this API key")
@@ -101,8 +106,7 @@ def gemini_generator(api_key: str | None = None, model: str | None = None, clien
                         break
                     if "exceeded your current quota" in str(e) and fallback:
                         break  # daily quota for this model is used up: move to the next model now
-                    busy = any(code in str(e) for code in ("429", "500", "503", "UNAVAILABLE", "RESOURCE_EXHAUSTED"))
-                    if not busy:
+                    if not _busy(e):
                         raise
                     if attempt < retries - 1:
                         time.sleep(2 ** attempt * 2)

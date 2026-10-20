@@ -89,6 +89,8 @@ order = {name: k for k, name in enumerate(SETUPS)}
 rows.sort(key=lambda r: (order[r["setup"]], r["i"]))
 res = pd.DataFrame(rows)
 print("errors:", res.answer.str.startswith("ERROR").sum(), "| models used:", res.model.value_counts().to_dict())
+# If errors remain (e.g. the daily quota ran out), wait and finish them with notebooks/04b_resume.py.
+assert res.model.dropna().nunique() <= 1, "answers came from more than one model; rerun from the top"
 
 # %% [markdown]
 # ## Score (same metrics as notebook 3)
@@ -102,13 +104,18 @@ res["cited"] = res.answer.map(cited_articles)
 res["refusal"] = res.answer.map(is_refusal)
 res["citation_correct"] = [bool(c) and c[0] in g for c, g in zip(res.cited, res.gold)]
 res["answered"] = ~res.refusal
-summary = res.groupby("setup").agg(
+res["error"] = res.answer.str.startswith("ERROR")
+ok = res[~res.error]  # failed API calls are not answers: leave them out of every metric
+summary = ok.groupby("setup").agg(
     chrF=("chrF", "mean"), answers=("answered", "mean"),
-    right_overall=("citation_correct", lambda s: (s & res.loc[s.index, "answered"]).mean()),
+    right_overall=("citation_correct", lambda s: (s & ok.loc[s.index, "answered"]).mean()),
     refusals=("refusal", "mean"))
 summary["right_when_answering"] = summary.right_overall / summary.answers
 summary["wrong_overall"] = summary.answers - summary.right_overall
-summary = summary.loc[list(SETUPS)].round(3)
+summary["errors"] = res.groupby("setup").error.sum()
+summary = summary.reindex(list(SETUPS)).round(3)
+if res.error.any():
+    print(f"WARNING: {res.error.sum()} failed answers are excluded; finish them with 04b_resume.py before reporting")
 summary
 
 # %%
