@@ -64,6 +64,9 @@ def test_pick_gemini_model_prefers_newest_plain_flash():
              "models/gemini-3.0-flash", "models/gemini-3.0-flash-001", "models/gemini-3.0-pro",
              "models/text-embedding-004", "models/gemini-3.0-flash-image"]
     assert pick_gemini_model(names) == "gemini-3.0-flash"
+    from amlegal.llm import rank_gemini_models
+    assert rank_gemini_models(names)[-1] == "gemini-3.0-flash-lite"          # Lite is the fallback
+    assert rank_gemini_models(names, lite=True) == ["gemini-3.0-flash-lite"]
     assert pick_gemini_model(["models/gemini-3-pro"]) == "gemini-3-pro"   # no flash: any general model
 
 

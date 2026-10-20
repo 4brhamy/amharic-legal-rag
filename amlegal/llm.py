@@ -7,7 +7,7 @@ import re
 import time
 
 DEFAULT_GEMINI_MODEL = "auto"  # pick the newest available Flash model (model names get retired over time)
-_SKIP = ("lite", "image", "tts", "audio", "live", "embedding", "thinking", "exp", "preview", "vision")
+_SKIP = ("image", "tts", "audio", "live", "embedding", "thinking", "exp", "preview", "vision")
 
 
 def _version(name: str) -> float:
@@ -15,15 +15,19 @@ def _version(name: str) -> float:
     return float(m.group(1)) if m else 0.0
 
 
-def rank_gemini_models(names: list[str]) -> list[str]:
-    """General-purpose Flash models the key can use, newest first (plain aliases before dated
-    variants). Falls back to any general Gemini model if there is no Flash model."""
+def rank_gemini_models(names: list[str], lite: bool | None = None) -> list[str]:
+    """General-purpose Flash models the key can use, newest first. By default full Flash models come
+    first and Flash-Lite models after them (Lite has a much larger free daily quota, so it is the
+    fallback when Flash's quota is used up). lite=True returns only Lite models, lite=False none."""
     names = [n.removeprefix("models/") for n in names]
-    flash = [n for n in names if "flash" in n and not any(k in n for k in _SKIP)]
-    pool = flash or [n for n in names if n.startswith("gemini") and not any(k in n for k in _SKIP)]
+    general = [n for n in names if n.startswith("gemini") and not any(k in n for k in _SKIP)]
+    full = sorted([n for n in general if "flash" in n and "lite" not in n], key=lambda n: (-_version(n), len(n)))
+    lites = sorted([n for n in general if "flash-lite" in n], key=lambda n: (-_version(n), len(n)))
+    pool = lites if lite else full if lite is False else full[:2] + lites[:2]
+    pool = pool or sorted([n for n in general if "lite" not in n], key=lambda n: (-_version(n), len(n)))
     if not pool:
         raise RuntimeError("no usable Gemini model available for this API key")
-    return sorted(pool, key=lambda n: (-_version(n), len(n)))
+    return pool
 
 
 def pick_gemini_model(names: list[str]) -> str:
@@ -44,11 +48,11 @@ def gemini_generator(api_key: str | None = None, model: str | None = None, clien
 
         client = genai.Client(api_key=api_key or os.environ["GEMINI_API_KEY"])
     model = model or os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
-    if model == "auto":
+    if model in ("auto", "auto-lite"):
         usable = [m.name for m in client.models.list()
                   if "generateContent" in (getattr(m, "supported_actions", None) or ["generateContent"])]
         # Newest model first; if it is overloaded (503) or rate-limited (429) fall back to the next ones.
-        candidates = rank_gemini_models(usable)[:3]
+        candidates = rank_gemini_models(usable, lite=True if model == "auto-lite" else None)[:4]
     else:
         candidates = [model]
 
@@ -74,6 +78,8 @@ def gemini_generator(api_key: str | None = None, model: str | None = None, clien
                     return (response.text or "").strip()
                 except Exception as e:  # busy/rate-limited: back off, then try the next model
                     last_error = e
+                    if "exceeded your current quota" in str(e):
+                        break  # daily quota for this model is used up: move to the next model now
                     busy = any(code in str(e) for code in ("429", "500", "503", "UNAVAILABLE", "RESOURCE_EXHAUSTED"))
                     if not busy:
                         raise

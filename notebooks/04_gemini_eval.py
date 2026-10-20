@@ -24,7 +24,7 @@ from amlegal.generate import build_messages, cited_articles, is_refusal
 from amlegal.llm import gemini_generator, DEFAULT_GEMINI_MODEL
 
 os.environ["GEMINI_API_KEY"] = userdata.get("GEMINI_API_KEY")
-MODEL = DEFAULT_GEMINI_MODEL
+MODEL = "auto-lite"  # Flash-Lite: its free daily quota fits the 200-call evaluation
 generate = gemini_generator(model=MODEL)
 print(MODEL, "->", generate([{"role": "user", "content": "ሰላም! በአንድ ቃል መልስ፦ የኢትዮጵያ ዋና ከተማ ማን ናት?"}], 20))
 
