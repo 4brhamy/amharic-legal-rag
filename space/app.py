@@ -104,7 +104,10 @@ def answer(question):
     try:
         text = generate(build_messages(question, articles, include_english=INCLUDE_ENGLISH, lenient=LENIENT))
     except Exception as e:  # noqa: BLE001  any model failure: still show the relevant articles
-        text = f"_(The answer model is unavailable right now: {type(e).__name__}. The most relevant articles are below.)_"
+        print(f"generation failed: {e!r}", flush=True)  # full detail in the Space logs
+        detail = str(e).split("{")[0].strip()[:160]  # e.g. "400 INVALID_ARGUMENT. API key not valid..."
+        text = (f"_(The answer model is unavailable right now: {type(e).__name__} {detail}. "
+                "The most relevant articles are below.)_")
     valid = {a["article"] for a in articles}
     cited = [n for n in cited_articles(text) if n in valid]
     if is_refusal(text):
