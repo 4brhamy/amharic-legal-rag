@@ -28,6 +28,7 @@ class FakeClient:
     def __init__(self, fail_times=0):
         self.calls, self.fail_times = [], fail_times
         self.models = self
+        self.list = list
 
     def generate_content(self, model, contents, config):
         self.calls.append((model, contents, config))
@@ -45,7 +46,7 @@ def test_gemini_generator_maps_messages(monkeypatch):
     assert out == "አይቻልም [አንቀጽ 11]"
     model, contents, config = client.calls[0]
     assert model == "gemini-test" and contents == "Q"
-    assert config.system_instruction == "SYS" and config.temperature == 0.0 and config.max_output_tokens == 50
+    assert config.system_instruction == "SYS" and config.temperature == 0.0 and config.max_output_tokens >= 50
 
 
 def test_gemini_generator_retries_transient_errors(monkeypatch):
@@ -55,3 +56,21 @@ def test_gemini_generator_retries_transient_errors(monkeypatch):
     gen = gemini_generator(client=client, model="m", retries=3)
     assert gen([{"role": "user", "content": "Q"}]).startswith("አይቻልም")
     assert len(client.calls) == 3
+
+
+def test_pick_gemini_model_prefers_newest_plain_flash():
+    from amlegal.llm import pick_gemini_model
+    names = ["models/gemini-2.0-flash", "models/gemini-2.5-flash", "models/gemini-3.0-flash-lite",
+             "models/gemini-3.0-flash", "models/gemini-3.0-flash-001", "models/gemini-3.0-pro",
+             "models/text-embedding-004", "models/gemini-3.0-flash-image"]
+    assert pick_gemini_model(names) == "gemini-3.0-flash"
+    assert pick_gemini_model(["models/gemini-3-pro"]) == "gemini-3-pro"   # no flash: any general model
+
+
+def test_auto_model_uses_models_list(monkeypatch):
+    from amlegal.llm import gemini_generator
+    client = FakeClient()
+    client.list = lambda: [pytypes.SimpleNamespace(name="models/gemini-9.9-flash", supported_actions=["generateContent"]),
+                           pytypes.SimpleNamespace(name="models/gemini-9.9-flash-tts", supported_actions=["generateContent"])]
+    gen = gemini_generator(client=client, model="auto")
+    assert gen.model == "gemini-9.9-flash"

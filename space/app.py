@@ -55,10 +55,11 @@ RETRIEVER = HybridRetriever(CORPUS, encode=encode)
 BACKEND = None
 if os.environ.get("GEMINI_API_KEY"):
     # Hosted model: no GPU needed in the Space.
-    from amlegal.llm import DEFAULT_GEMINI_MODEL, gemini_generator
+    from amlegal.llm import gemini_generator
 
     generate = gemini_generator()
-    BACKEND = os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
+    BACKEND = generate.model  # the model actually chosen (newest available Flash unless GEMINI_MODEL is set)
+    print(f"answering with {BACKEND}", flush=True)
 elif os.environ.get("AMLEGAL_GENERATE") == "1":
     BACKEND = MODEL_ID
     import torch
